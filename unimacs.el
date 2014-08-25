@@ -44,7 +44,7 @@
 
 
 (defun unimacs/format-match (match-str selected)
-  (let ((margin (if selected "> "            "  "))
+  (let ((margin (if selected "> " "  "))
         (aux    (or (gethash match-str *unimacs/current-hashmap*) ""))
         (face   (if selected 'diredp-symlink 'default)))
     (propertize (format (format "%%s%%-%ds   %%s" *unimacs/max-length*)
@@ -145,7 +145,7 @@
           (apply 'max (mapcar 'length filt-buffers)))
     (clrhash *unimacs/current-hashmap*)
     (dolist (elt filt-buffers)
-      (puthash elt "auxiliary data" *unimacs/current-hashmap*))
+      (puthash elt (buffer-file-name (get-buffer elt)) *unimacs/current-hashmap*))
     (switch-to-buffer (unimacs/completing-read " Unimacs: Switch to buffer" index))))
 
 
