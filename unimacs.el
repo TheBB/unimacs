@@ -45,7 +45,7 @@
 
 (defun unimacs/format-match (match-str selected)
   (let ((margin (if selected "> "            "  "))
-        (aux    (gethash match-str *unimacs/current-hashmap*))
+        (aux    (or (gethash match-str *unimacs/current-hashmap*) ""))
         (face   (if selected 'diredp-symlink 'default)))
     (propertize (format (format "%%s%%-%ds   %%s" *unimacs/max-length*)
                         margin match-str aux)
