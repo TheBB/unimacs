@@ -4,10 +4,14 @@
 (defvar *unimacs/read-max-results* 10
   "The maximum number of results to show.")
 
-
 (defvar *unimacs/current-result* nil
   "The search result.")
 
+(defvar *unimacs/current-hashmap* (make-hash-table)
+  "The hashmap containing auxiliary data.")
+
+(defvar *unimacs/max-length* 60
+  "Maximal length among strings being searched.")
 
 (defvar *unimacs/current-selection* 0
   "The selected offset.")
@@ -41,8 +45,11 @@
 
 (defun unimacs/format-match (match-str selected)
   (let ((margin (if selected "> "            "  "))
+        (aux    (gethash match-str *unimacs/current-hashmap*))
         (face   (if selected 'diredp-symlink 'default)))
-    (propertize (format "%s%s" margin match-str) 'face face)))
+    (propertize (format (format "%%s%%-%ds   %%s" *unimacs/max-length*)
+                        margin match-str aux)
+                'face face)))
 
 
 (defun unimacs/map-format-matches (matches)
@@ -133,9 +140,13 @@
          (filt-buffers (delq nil (mapcar (lambda (s)
                                            (if (eq 32 (string-to-char s)) nil s))
                                          pre-buffers)))
-         (index (grizzl-make-index filt-buffers))
-         (newbuf (unimacs/completing-read " Unimacs: Switch to buffer" index)))
-    (switch-to-buffer newbuf)))
+         (index (grizzl-make-index filt-buffers)))
+    (setq *unimacs/max-length*
+          (apply 'max (mapcar 'length filt-buffers)))
+    (clrhash *unimacs/current-hashmap*)
+    (dolist (elt filt-buffers)
+      (puthash elt "auxiliary data" *unimacs/current-hashmap*))
+    (switch-to-buffer (unimacs/completing-read " Unimacs: Switch to buffer" index))))
 
 
 (provide 'unimacs)
