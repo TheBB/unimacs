@@ -55,7 +55,7 @@
 (defun unimacs/format-match (match-str selected)
   (let* ((margin (if selected "> " "  "))
          (aux (or (gethash match-str *unimacs/hashmap*) ""))
-         (face (if selected 'diredp-symlink 'default))
+         (face (if selected 'dired-symlink 'default))
          (str (apply 'concat
                      (cl-mapcar (lambda (s w)
                                   (if s (format (format "%%-%ds   " w) s) ""))
@@ -177,8 +177,7 @@
                                          (with-current-buffer bufname mode-name)
                                          (buffer-file-name (get-buffer bufname))))
                                  filt-buffers))
-    (unimacs/do)
-    ))
+    (switch-to-buffer (unimacs/do))))
 
 
 (provide 'unimacs)
