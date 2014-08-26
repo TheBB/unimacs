@@ -48,6 +48,29 @@
   "")
 
 
+;; Faces
+
+(defface unimacs/normal
+  '((((background dark))
+     :background "#141413"
+     :foreground "#ffffff")
+    (((background light))
+     :background "#ffffff"
+     :foreground "#141413"))
+  "Face used for unhighlighted entries.")
+
+(defface unimacs/highlighted
+  '((((background dark))
+     :background "#35322d"
+     :foreground "#ff2c4b"
+     :weight bold)
+    (((background light))
+     :background "#35322d"
+     :foreground "#ff2c4b"
+     :weight bold))
+  "Face used for highlighted entries.")
+
+
 ;; Minor mode used when searching
 ;; =================================================================================
 
@@ -71,7 +94,7 @@
 ;; Search functionality
 ;; =================================================================================
 ;; These functions are heavily inspired by the grizzl-read module by Chris Corbyn.
-;; They have been modified to display auxiliary data.
+;; They have been modified to remove the modeline and display auxiliary data.
 
 
 (defun unimacs/selected-result (index)
@@ -79,18 +102,6 @@
                               :start 0
                               :end   unimacs/read-max-results)
        (unimacs/current-selection)))
-
-
-(defun unimacs/format-prompt-line (prompt)
-  (let* ((count (grizzl-result-count *unimacs/result*))
-         (match-info (format " (%d candidate%s) ---- *-"
-                             count (if (= count 1) "" "s"))))
-    (concat (propertize (format "-*%s *-" prompt) 'face 'modeline-inactive)
-            (propertize " "
-                        'face    'modeline-inactive
-                        'display `(space :align-to (- right
-                                                      ,(1+ (length match-info)))))
-            (propertize match-info 'face 'modeline-inactive))))
 
 
 (defun unimacs/current-selection ()
@@ -101,15 +112,16 @@
 
 
 (defun unimacs/format-match (match-str selected)
-  (let* ((margin (if selected "> " "  "))
-         (aux (or (gethash match-str *unimacs/hashmap*) ""))
-         (face (if selected 'dired-symlink 'default))
+  (let* ((aux (or (gethash match-str *unimacs/hashmap*) ""))
+         (face (if selected 'unimacs/highlighted 'unimacs/normal))
          (str (apply 'concat
                      (cl-mapcar (lambda (s w)
                                   (if s (format (format "%%-%ds   " w) s) ""))
                                 (cons match-str aux)
-                                *unimacs/widths*))))
-    (propertize str 'face face)))
+                                *unimacs/widths*)
+                     )))
+    (propertize (concat str (propertize " " 'display `(space :align-to right)))
+                'face face)))
 
 
 (defun unimacs/map-format-matches (matches)
@@ -125,22 +137,21 @@
                     :initial-value '(0)))))
 
 
-(defun unimacs/display-result (index prompt)
+(defun unimacs/display-result (index)
   (let* ((matches (grizzl-result-strings *unimacs/result* index
                                          :start 0
                                          :end   unimacs/read-max-results)))
     (delete-all-overlays)
     (overlay-put (make-overlay (point-min) (point-min))
                  'before-string
-                 (format "%s\n%s\n"
+                 (format "%s\n"
                          (mapconcat 'identity
                                     (unimacs/map-format-matches matches)
-                                    "\n")
-                         (unimacs/format-prompt-line prompt)))
-    (set-window-text-height nil (max 3 (+ 2 (length matches))))))
+                                    "\n")))
+    (set-window-text-height nil (max 2 (1+ (length matches))))))
 
 
-(defun unimacs/completing-read (prompt title index)
+(defun unimacs/completing-read (prompt index)
   (minibuffer-with-setup-hook
       (lambda ()
         (setq *unimacs/result* nil)
@@ -152,13 +163,13 @@
                               (grizzl-search (minibuffer-contents)
                                              index
                                              *unimacs/result*))
-                        (unimacs/display-result index title)))
+                        (unimacs/display-result index)))
              (exitfun (lambda ()
                         (unimacs/mode -1)
                         (remove-hook 'post-command-hook    hookfun t))))
           (add-hook 'minibuffer-exit-hook exitfun nil t)
           (add-hook 'post-command-hook    hookfun nil t)))
-    (read-from-minibuffer (concat prompt " "))
+    (read-from-minibuffer prompt)
     (unimacs/selected-result index)))
 
 
@@ -211,7 +222,7 @@
           (puthash (car elt) (cdr elt) (cdr (assq 'auxdata (gethash view *unimacs/view-data*)))))))))
 
 
-(defun unimacs/view (view title callback)
+(defun unimacs/view (view callback)
   (unimacs/prepare-view view)
   (let ((vd (gethash view *unimacs/view-data*)))
     (setq *unimacs/index* (cdr (assq 'index vd)))
@@ -219,7 +230,7 @@
     (setq *unimacs/widths* (cdr (assq 'widths vd)))
     (setq *unimacs/hashmap* (cdr (assq 'auxdata vd))))
   (funcall callback
-           (unimacs/completing-read ">>>" (concat " Unimacs: " title) *unimacs/index*)))
+           (unimacs/completing-read ">>> " *unimacs/index*)))
 
 
 
@@ -284,6 +295,21 @@
                     (setq i (1+ i)))))
       (unless (= i *unimacs/src-extended-count*)
         (setq *unimacs/src-extended-count* i))))))
+
+
+
+;; Standard commands
+;; =================================================================================
+
+(defun unimacs/cmd-switch-buffer ()
+  (interactive)
+  (unimacs/view 'buffers 'switch-to-buffer))
+
+(defun unimacs/cmd-extended-command ()
+  (interactive)
+  (unimacs/view 'extended
+                (lambda (cmd)
+                  (execute-extended-command current-prefix-arg cmd))))
 
 
 ;; Fin
