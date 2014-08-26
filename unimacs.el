@@ -57,26 +57,19 @@
 
 ;; Faces
 
-(defface unimacs/normal
-  '((((background dark))
-     :background "#141413"
-     :foreground "#ffffff")
-    (((background light))
-     :background "#ffffff"
-     :foreground "#141413"))
-  "Face used for unhighlighted entries.")
+(let ((bwc-plain "#f8f6f2") (bwc-snow "#ffffff") (bwc-coal "#000000") (bwc-brightgravel "#d9cec3")
+      (bwc-lightgravel "#998f84") (bwc-gravel "#857f78") (bwc-mediumgravel "#666462")
+      (bwc-deepgravel "#45413b") (bwc-deepergravel "#35322d") (bwc-darkgravel "#242321")
+      (bwc-blackgravel "#1c1b1a") (bwc-blackestgravel "#141413") (bwc-dalespale "#fade3e")
+      (bwc-dirtyblonde "#f4cf86") (bwc-taffy "#ff2c4b") (bwc-saltwatertaffy "#8cffba")
+      (bwc-tardis "#0a9dff") (bwc-darktardis "#005fff") (bwc-orange "#ffa724") (bwc-lime "#aeee00")
+      (bwc-dress "#ff9eb8") (bwc-toffee "#b88853") (bwc-coffee "#c7915b") (bwc-darkroast "#88633f")
+      (bwc-term-blue "#6298c8") (bwc-term-green "#82d92f") (bwc-term-yellow "#f3e14c")
+      (bwc-term-red "#e5261f"))
 
-(defface unimacs/highlighted
-  '((((background dark))
-     :background "#35322d"
-     :foreground "#ff2c4b"
-     :weight bold)
-    (((background light))
-     :background "#35322d"
-     :foreground "#ff2c4b"
-     :weight bold))
-  "Face used for highlighted entries.")
-
+  (defface unimacs/highlighted
+    `((t (:background ,bwc-gravel)))
+    "Highlighted item."))
 
 
 ;; Minor mode used when searching
@@ -121,16 +114,25 @@
     (max 0 (min max-selection *unimacs/selection*))))
 
 
+(defun unimacs/highlight (str selected)
+  (if selected
+      (propertize str 'face (list 'hl-line
+                                  (get-text-property 0 'face str)))
+    str))
+
+
 (defun unimacs/format-match (match-str selected)
   (let* ((aux (or (gethash match-str *unimacs/hashmap*) ""))
-         (face (if selected 'unimacs/highlighted 'unimacs/normal))
          (str (apply 'concat
                      (cl-mapcar (lambda (s w)
-                                  (if s (format (format "%%-%ds   " w) s) ""))
+                                  (unimacs/highlight
+                                   (if s (format (format "%%-%ds   " w) s) "")
+                                   selected))
                                 (cons match-str aux)
-                                *unimacs/widths*))))
-    (propertize (concat str (propertize " " 'display `(space :align-to right)))
-                'face face)))
+                                *unimacs/widths*)))
+         (righty (unimacs/highlight (propertize " " 'display `(space :align-to right)) selected))
+         (fstr (concat str righty)))
+    fstr))
 
 
 (defun unimacs/map-format-matches (matches)
@@ -381,4 +383,3 @@
 ;; =================================================================================
 
 (provide 'unimacs)
-
