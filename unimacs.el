@@ -10,7 +10,8 @@
   "The maximum number of results to show.")
 
 (defcustom unimacs/views
-  '((buffers . ((unimacs/src-buffers))))
+  '((buffers . ((unimacs/src-buffers)))
+    (extended . ((unimacs/src-extended))))
   "Available views.")
 
 
@@ -242,10 +243,8 @@
       (cond
        ((eq 'changed command)
         (let ((checksum (secure-hash 'md5 (apply 'concat filt-buffers))))
-          (if (string= checksum *unimacs/src-buffers-checksum*)
-              nil
-            (setq *unimacs/src-buffers-checksum* checksum)
-            t)))
+          (unless (string= checksum *unimacs/src-buffers-checksum*)
+            (setq *unimacs/src-buffers-checksum* checksum))))
 
        ((eq 'update command)
         (setq *unimacs/src-buffers-data* nil)
@@ -255,6 +254,36 @@
                             (with-current-buffer bufname mode-name)
                             (buffer-file-name (get-buffer bufname)))
                       *unimacs/src-buffers-data*)))))))))
+
+
+
+;; Extended commands source
+;; =================================================================================
+
+(defvar *unimacs/src-extended-count* -1)
+(defvar *unimacs/src-extended-data* nil)
+
+(defun unimacs/src-extended (command)
+  (cond
+   ((eq 'provide command)
+    (dolist (elt *unimacs/src-extended-data*)
+      (setq *unimacs/data* (cons elt *unimacs/data*))))
+
+   ((eq 'update command)
+    (setq *unimacs/src-extended-data* nil)
+    (mapatoms (lambda (smb)
+                (if (commandp smb)
+                    (setq *unimacs/src-extended-data*
+                          (cons (list (symbol-name smb))
+                                *unimacs/src-extended-data*))))))
+
+   ((eq 'changed command)
+    (let ((i 0))
+      (mapatoms (lambda (smb)
+                  (when (commandp smb)
+                    (setq i (1+ i)))))
+      (unless (= i *unimacs/src-extended-count*)
+        (setq *unimacs/src-extended-count* i))))))
 
 
 ;; Fin
