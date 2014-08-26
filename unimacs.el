@@ -4,17 +4,26 @@
 ;; Global variables
 ;; =================================================================================
 
+;; Customizable
+
 (defcustom unimacs/read-max-results 10
   "The maximum number of results to show.")
+
+(defcustom unimacs/views
+  '((buffers . ((unimacs/src-buffers))))
+  "Available views.")
+
+
+;; Current only to a search
 
 (defvar *unimacs/result* nil
   "The search result.")
 
+(defvar *unimacs/selection* 0
+  "The selected offset.")
+
 (defvar *unimacs/hashmap* (make-hash-table)
   "A map mapping search entries to auxiliary data.")
-
-(defvar *unimacs/index* nil
-  "The grizzl search index.")
 
 (defvar *unimacs/ncolumns* nil
   "The number of columns in the search (including search entry).")
@@ -22,16 +31,20 @@
 (defvar *unimacs/widths* nil
   "The widths for each column. A list of length *unimacs/ncolumns*.")
 
+
+;; Used for sources to communicate information
+
 (defvar *unimacs/data* nil
   "The data to search in. A list of lists of strings.")
 
-(defvar *unimacs/selection* 0
-  "The selected offset.")
 
-(defcustom unimacs/views
-  '((buffers . ((unimacs/src-buffers))))
-  "Available views.")
+;; Persistent over a session
 
+(defvar *unimacs/indexes* (make-hash-table)
+  "A grizzl search index for each view.")
+
+(defvar *unimacs/view-data* (make-hash-table)
+  "")
 
 
 ;; Minor mode used when searching
@@ -171,49 +184,77 @@
     lengths))
 
 
-(defun unimacs/execute (title)
-  (setq *unimacs/index* (grizzl-make-index (mapcar 'car *unimacs/data*)))
-  (setq *unimacs/ncolumns* (apply 'max (mapcar 'length *unimacs/data*)))
-  (setq *unimacs/widths*
-        (cl-reduce 'unimacs/max-lengths
-                   *unimacs/data*
-                   :initial-value (make-list *unimacs/ncolumns* 0)))
-  (clrhash *unimacs/hashmap*)
-  (dolist (elt *unimacs/data*)
-    (puthash (car elt) (cdr elt) *unimacs/hashmap*))
-  (unimacs/completing-read ">>>" (concat " Unimacs: " title) *unimacs/index*))
-
-
-(defun unimacs/reset ()
-  (setq *unimacs/data* nil))
+(defun unimacs/prepare-view (view)
+  (let* ((view-data (assq view unimacs/views))
+         (sources (cdr view-data))
+         (changed (reduce 'or (mapcar (lambda (src)
+                                        (if (apply (car src) 'changed (cdr src))
+                                            (progn (apply (car src) 'update (cdr src))
+                                                   t)
+                                          nil))
+                                      sources))))
+    (when (or changed (not (gethash view *unimacs/view-data*)))
+      (setq *unimacs/data* nil)
+      (dolist (elt sources)
+        (apply (car elt) 'provide (cdr elt)))
+      (let ((nc (apply 'max (mapcar 'length *unimacs/data*))))
+        (puthash view `((index . ,(grizzl-make-index (mapcar 'car *unimacs/data*)))
+                        (auxdata . ,(make-hash-table))
+                        (ncolumns . ,nc)
+                        (widths . ,(cl-reduce 'unimacs/max-lengths
+                                              *unimacs/data*
+                                              :initial-value (make-list nc 0))))
+                 *unimacs/view-data*))
+      (let ((vd (gethash view *unimacs/view-data*)))
+        (dolist (elt *unimacs/data*)
+          (puthash (car elt) (cdr elt) (cdr (assq 'auxdata (gethash view *unimacs/view-data*)))))))))
 
 
 (defun unimacs/view (view title callback)
-  (unimacs/reset)
-  (let* ((view-data (assq view unimacs/views))
-         (sources (cdr view-data)))
-    (dolist (elt sources)
-      (apply (car elt) (cdr elt)))
-    (funcall callback (unimacs/execute title))))
+  (unimacs/prepare-view view)
+  (let ((vd (gethash view *unimacs/view-data*)))
+    (setq *unimacs/index* (cdr (assq 'index vd)))
+    (setq *unimacs/ncolumns* (cdr (assq 'ncolumns vd)))
+    (setq *unimacs/widths* (cdr (assq 'widths vd)))
+    (setq *unimacs/hashmap* (cdr (assq 'auxdata vd))))
+  (funcall callback
+           (unimacs/completing-read ">>>" (concat " Unimacs: " title) *unimacs/index*)))
 
 
 
-;; Sources
+;; Buffer source
 ;; =================================================================================
 
+(defvar *unimacs/src-buffers-checksum* nil)
+(defvar *unimacs/src-buffers-data* nil)
 
-(defun unimacs/src-buffers ()
-  (let* ((pre-buffers (mapcar 'buffer-name (buffer-list)))
-         (filt-buffers (delq nil (mapcar (lambda (s)
-                                           (if (eq 32 (string-to-char s)) nil s))
-                                         pre-buffers))))
-    (dolist (bufname filt-buffers)
-      (setq *unimacs/data*
-            (cons (list bufname
-                        (with-current-buffer bufname mode-name)
-                        (buffer-file-name (get-buffer bufname)))
-                  *unimacs/data*)))))
+(defun unimacs/src-buffers (command)
+  (cond
+   ((eq 'provide command)
+    (dolist (elt *unimacs/src-buffers-data*)
+      (setq *unimacs/data* (cons elt *unimacs/data*))))
 
+   ((or (eq 'changed command) (eq 'update command))
+    (let* ((pre-buffers (mapcar 'buffer-name (buffer-list)))
+           (filt-buffers (delq nil (mapcar (lambda (s)
+                                             (if (eq 32 (string-to-char s)) nil s))
+                                           pre-buffers))))
+      (cond
+       ((eq 'changed command)
+        (let ((checksum (secure-hash 'md5 (apply 'concat filt-buffers))))
+          (if (string= checksum *unimacs/src-buffers-checksum*)
+              nil
+            (setq *unimacs/src-buffers-checksum* checksum)
+            t)))
+
+       ((eq 'update command)
+        (setq *unimacs/src-buffers-data* nil)
+        (dolist (bufname filt-buffers)
+          (setq *unimacs/src-buffers-data*
+                (cons (list bufname
+                            (with-current-buffer bufname mode-name)
+                            (buffer-file-name (get-buffer bufname)))
+                      *unimacs/src-buffers-data*)))))))))
 
 
 ;; Fin
