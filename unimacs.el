@@ -1,4 +1,5 @@
 (require 'grizzl)
+(require 'f)
 
 
 ;; Global variables
@@ -69,6 +70,7 @@
      :foreground "#ff2c4b"
      :weight bold))
   "Face used for highlighted entries.")
+
 
 
 ;; Minor mode used when searching
@@ -200,10 +202,9 @@
   (let* ((view-data (assq view unimacs/views))
          (sources (cdr view-data))
          (changed (reduce 'or (mapcar (lambda (src)
-                                        (if (apply (car src) 'changed (cdr src))
-                                            (progn (apply (car src) 'update (cdr src))
-                                                   t)
-                                          nil))
+                                        (when (apply (car src) 'changed (cdr src))
+                                          (apply (car src) 'update (cdr src))
+                                          t))
                                       sources))))
     (when (or changed (not (gethash view *unimacs/view-data*)))
       (setq *unimacs/data* nil)
@@ -219,7 +220,7 @@
                  *unimacs/view-data*))
       (let ((vd (gethash view *unimacs/view-data*)))
         (dolist (elt *unimacs/data*)
-          (puthash (car elt) (cdr elt) (cdr (assq 'auxdata (gethash view *unimacs/view-data*)))))))))
+          (puthash (car elt) (cdr elt) (cdr (assq 'auxdata vd))))))))
 
 
 (defun unimacs/view (view callback)
@@ -298,6 +299,21 @@
 
 
 
+;; Filenames source
+;; =================================================================================
+
+(defun unimacs/src-filenames (command directory)
+  (dolist (elt (f-directories
+                "~/repos/dotfiles"
+                (lambda (dir)
+                  (not (delq nil (mapcar (lambda (elt)
+                                           (string= "." (substring elt 0 1)))
+                                         (f-split dir)))))
+                t))
+    (message elt)))
+
+
+
 ;; Standard commands
 ;; =================================================================================
 
@@ -310,6 +326,7 @@
   (unimacs/view 'extended
                 (lambda (cmd)
                   (execute-extended-command current-prefix-arg cmd))))
+
 
 
 ;; Fin
