@@ -18,6 +18,12 @@
 
 ;; Current only to a search
 
+(defvar *unimacs/abnormal-exit* nil
+  "Truthy if the exit was abnormal, in which case this value is returned.")
+
+(defvar *unimacs/file-prompt* nil
+  "Holds the current directory in case of a file view.")
+
 (defvar *unimacs/result* nil
   "The search result.")
 
@@ -83,6 +89,8 @@
 (define-key unimacs/keymap (kbd "M-k")    'unimacs/set-selection+1)
 (define-key unimacs/keymap (kbd "<down>") 'unimacs/set-selection-1)
 (define-key unimacs/keymap (kbd "M-j")    'unimacs/set-selection-1)
+(define-key unimacs/keymap (kbd "<tab>")  (kbd "RET"))
+(define-key unimacs/keymap (kbd "C-l")    'unimacs/file-up)
 
 
 (define-minor-mode unimacs/mode
@@ -120,8 +128,7 @@
                      (cl-mapcar (lambda (s w)
                                   (if s (format (format "%%-%ds   " w) s) ""))
                                 (cons match-str aux)
-                                *unimacs/widths*)
-                     )))
+                                *unimacs/widths*))))
     (propertize (concat str (propertize " " 'display `(space :align-to right)))
                 'face face)))
 
@@ -172,7 +179,11 @@
           (add-hook 'minibuffer-exit-hook exitfun nil t)
           (add-hook 'post-command-hook    hookfun nil t)))
     (read-from-minibuffer prompt)
-    (unimacs/selected-result index)))
+    (if *unimacs/abnormal-exit*
+        (let ((retval *unimacs/abnormal-exit*))
+          (setq *unimacs/abnormal-exit* nil)
+          retval)
+      (unimacs/selected-result index))))
 
 
 (defun unimacs/move-selection (delta)
@@ -198,14 +209,12 @@
     lengths))
 
 
-(defun unimacs/prepare-view (view)
-  (let* ((view-data (assq view unimacs/views))
-         (sources (cdr view-data))
-         (changed (reduce 'or (mapcar (lambda (src)
-                                        (when (apply (car src) 'changed (cdr src))
-                                          (apply (car src) 'update (cdr src))
-                                          t))
-                                      sources))))
+(defun unimacs/prepare-sources (view sources)
+  (let ((changed (reduce 'or (mapcar (lambda (src)
+                                       (when (apply (car src) 'changed (cdr src))
+                                         (apply (car src) 'update (cdr src))
+                                         t))
+                                     sources))))
     (when (or changed (not (gethash view *unimacs/view-data*)))
       (setq *unimacs/data* nil)
       (dolist (elt sources)
@@ -223,15 +232,41 @@
           (puthash (car elt) (cdr elt) (cdr (assq 'auxdata vd))))))))
 
 
-(defun unimacs/view (view callback)
-  (unimacs/prepare-view view)
+(defun unimacs/prepare-view (view)
+  (let* ((view-data (assq view unimacs/views))
+         (sources (cdr view-data)))
+    (unimacs/prepare-sources view sources)))
+
+
+(defun unimacs/set-view (view)
   (let ((vd (gethash view *unimacs/view-data*)))
     (setq *unimacs/index* (cdr (assq 'index vd)))
     (setq *unimacs/ncolumns* (cdr (assq 'ncolumns vd)))
     (setq *unimacs/widths* (cdr (assq 'widths vd)))
-    (setq *unimacs/hashmap* (cdr (assq 'auxdata vd))))
-  (funcall callback
-           (unimacs/completing-read ">>> " *unimacs/index*)))
+    (setq *unimacs/hashmap* (cdr (assq 'auxdata vd)))))
+
+
+(defun unimacs/view (view callback)
+  (unimacs/prepare-view view)
+  (unimacs/set-view view)
+  (funcall callback (unimacs/completing-read ">>> " *unimacs/index*)))
+
+
+(defun unimacs/view-files (directory callback)
+  (let ((sources `((unimacs/src-files ,directory)))
+        (prompt (f-slash (f-short directory))))
+    (unimacs/prepare-sources 'files sources)
+    (unimacs/set-view 'files)
+    (setq *unimacs/file-prompt* directory)
+    (funcall callback (unimacs/completing-read prompt *unimacs/index*))
+    (setq *unimacs/file-prompt* nil)))
+
+
+(defun unimacs/file-up ()
+  (interactive)
+  (when *unimacs/file-prompt*
+    (setq *unimacs/abnormal-exit* (f-parent *unimacs/file-prompt*))
+    (exit-minibuffer)))
 
 
 
@@ -302,15 +337,20 @@
 ;; Filenames source
 ;; =================================================================================
 
-(defun unimacs/src-filenames (command directory)
-  (dolist (elt (f-directories
-                "~/repos/dotfiles"
-                (lambda (dir)
-                  (not (delq nil (mapcar (lambda (elt)
-                                           (string= "." (substring elt 0 1)))
-                                         (f-split dir)))))
-                t))
-    (message elt)))
+(defun unimacs/src-files (command directory)
+  (cond
+   ((eq 'changed command) t)
+   ((eq 'update command))
+   ((eq 'provide command)
+    (f-entries directory
+               (lambda (fn)
+                 (setq *unimacs/data*
+                       (cons (list (f-relative fn directory)
+                                   (cond
+                                    ((f-file? fn) "file")
+                                    ((f-directory? fn) "dir")
+                                    ((f-symlink? fn) "symlink")))
+                             *unimacs/data*)))))))
 
 
 
@@ -327,9 +367,18 @@
                 (lambda (cmd)
                   (execute-extended-command current-prefix-arg cmd))))
 
+(defun unimacs/cmd-find-file (&optional dir-in)
+  (interactive)
+  (let ((dir (or dir-in default-directory)))
+    (if (f-directory? dir)
+        (unimacs/view-files dir (lambda (f)
+                                  (unimacs/cmd-find-file (f-expand f dir))))
+      (find-file dir))))
+
 
 
 ;; Fin
 ;; =================================================================================
 
 (provide 'unimacs)
+
