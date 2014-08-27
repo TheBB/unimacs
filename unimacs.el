@@ -74,6 +74,10 @@
     `((t (:foreground ,bwc-snow)))
     "For various things that don't need specific highlighting.")
 
+  (defface unimacs/nomatch
+    `((t (:foreground ,bwc-taffy :weight bold)))
+    "When there are no matches")
+
   (defface unimacs/file
     `((t (:foreground ,bwc-snow)))
     "Files in file views.")
@@ -165,7 +169,7 @@
 
 (defun unimacs/map-format-matches (matches)
   (if (= 0 (length matches))
-      (list (propertize "-- NO MATCH --" 'face 'outline-3))
+      (list (propertize "-- NO MATCH --" 'face 'unimacs/nomatch))
     (cdr (cl-reduce (lambda (acc str)
                       (let* ((idx (car acc))
                              (lst (cdr acc))
