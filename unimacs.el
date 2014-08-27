@@ -12,7 +12,10 @@
 
 (defcustom unimacs/views
   '((buffers . ((unimacs/src-buffers)))
-    (extended . ((unimacs/src-extended))))
+    (extended . ((unimacs/src-extended)))
+    (functions . ((unimacs/src-functions)))
+    (variables . ((unimacs/src-variables)))
+    )
   "Available views.")
 
 
@@ -335,33 +338,52 @@
 
 
 
-;; Extended commands source
+;; Meta source for querying obarray
 ;; =================================================================================
 
-(defvar *unimacs/src-extended-count* -1)
-(defvar *unimacs/src-extended-data* nil)
+(defvar *unimacs/src-obarray-counts* (make-hash-table))
+(defvar *unimacs/src-obarray-datas* (make-hash-table))
 
-(defun unimacs/src-extended (command)
+(defun unimacs/src-obarray (type predicate command)
+  (unless (gethash type *unimacs/src-obarray-counts*)
+    (puthash type -1 *unimacs/src-obarray-counts*)
+    (puthash type nil *unimacs/src-obarray-datas*))
+
   (cond
    ((eq 'provide command)
-    (dolist (elt *unimacs/src-extended-data*)
+    (dolist (elt (gethash type *unimacs/src-obarray-datas*))
       (setq *unimacs/data* (cons elt *unimacs/data*))))
 
    ((eq 'update command)
-    (setq *unimacs/src-extended-data* nil)
-    (mapatoms (lambda (smb)
-                (if (commandp smb)
-                    (setq *unimacs/src-extended-data*
+    (let (lst)
+      (mapatoms (lambda (smb)
+                  (when (funcall predicate smb)
+                    (setq lst
                           (cons (list (propertize (symbol-name smb) 'face 'unimacs/normal))
-                                *unimacs/src-extended-data*))))))
+                                lst)))))
+      (puthash type lst *unimacs/src-obarray-datas*)))
 
    ((eq 'changed command)
     (let ((i 0))
       (mapatoms (lambda (smb)
-                  (when (commandp smb)
+                  (when (funcall predicate smb)
                     (setq i (1+ i)))))
-      (unless (= i *unimacs/src-extended-count*)
-        (setq *unimacs/src-extended-count* i))))))
+      (unless (= i (gethash type *unimacs/src-obarray-counts*))
+        (puthash type i *unimacs/src-obarray-counts*))))))
+
+
+(defun unimacs/src-extended (command)
+  (unimacs/src-obarray 'extended 'commandp command))
+
+(defun unimacs/src-functions (command)
+  (unimacs/src-obarray 'functions 'fboundp command))
+
+(defun unimacs/src-variables (command)
+  (unimacs/src-obarray 'variables
+                       (lambda (vv)
+                         (or (get vv 'variable-documentation)
+                             (and (boundp vv) (not (keywordp vv)))))
+                       command))
 
 
 
@@ -402,6 +424,16 @@
   (unimacs/view 'extended
                 (lambda (cmd)
                   (execute-extended-command current-prefix-arg cmd))))
+
+(defun unimacs/cmd-describe-function ()
+  (interactive)
+  (unimacs/view 'functions (lambda (f)
+                             (describe-function (intern f)))))
+
+(defun unimacs/cmd-describe-variable ()
+  (interactive)
+  (unimacs/view 'variables (lambda (f)
+                             (describe-variable (intern f)))))
 
 (defun unimacs/cmd-find-file (&optional dir-in)
   (interactive)
