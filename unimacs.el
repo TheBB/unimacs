@@ -222,7 +222,7 @@
 
 (defun unimacs/move-selection (delta)
   (setq *unimacs/selection* (+ (unimacs/current-selection) delta))
-  (when (not (= (unimacs/current-selection) *unimacs/selection*))
+  (unless (= (unimacs/current-selection) *unimacs/selection*)
     (beep)))
 
 
