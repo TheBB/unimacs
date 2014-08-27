@@ -67,9 +67,22 @@
       (bwc-term-blue "#6298c8") (bwc-term-green "#82d92f") (bwc-term-yellow "#f3e14c")
       (bwc-term-red "#e5261f"))
 
-  (defface unimacs/highlighted
-    `((t (:background ,bwc-gravel)))
-    "Highlighted item."))
+  (defface unimacs/file
+    `((t (:foreground ,bwc-snow)))
+    "Files in file views.")
+
+  (defface unimacs/symlink
+    `((t (:foreground ,bwc-dress)))
+    "Symlinks in file views.")
+
+  (defface unimacs/directory
+    `((t (:foreground ,bwc-term-blue :weight bold)))
+    "Directories in file views.")
+
+  (defface unimacs/file-other
+    `((t (:foreground ,bwc-taffy)))
+    "Other kinds of entries in file views.")
+  )
 
 
 ;; Minor mode used when searching
@@ -344,15 +357,20 @@
    ((eq 'changed command) t)
    ((eq 'update command))
    ((eq 'provide command)
-    (f-entries directory
-               (lambda (fn)
-                 (setq *unimacs/data*
-                       (cons (list (f-relative fn directory)
-                                   (cond
-                                    ((f-file? fn) "file")
-                                    ((f-directory? fn) "dir")
-                                    ((f-symlink? fn) "symlink")))
-                             *unimacs/data*)))))))
+    (f-entries
+     directory
+     (lambda (fn)
+       (let ((face (cond ((f-symlink? fn) 'unimacs/symlink)
+                         ((f-file? fn) 'unimacs/file)
+                         ((f-directory? fn) 'unimacs/directory)
+                         (t 'unimacs/file-other)))
+             (stat (file-attributes (f-canonical fn))))
+         (setq *unimacs/data*
+               (cons (list
+                      (propertize (f-relative fn directory) 'face face)
+                      (propertize (number-to-string (if stat (nth 7 stat) "")) 'face face)
+                      (propertize (if stat (current-time-string (nth 5 stat)) "") 'face face))
+                     *unimacs/data*))))))))
 
 
 
