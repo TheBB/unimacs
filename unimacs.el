@@ -67,6 +67,10 @@
       (bwc-term-blue "#6298c8") (bwc-term-green "#82d92f") (bwc-term-yellow "#f3e14c")
       (bwc-term-red "#e5261f"))
 
+  (defface unimacs/normal
+    `((t (:foreground ,bwc-snow)))
+    "For various things that don't need specific highlighting.")
+
   (defface unimacs/file
     `((t (:foreground ,bwc-snow)))
     "Files in file views.")
@@ -82,6 +86,14 @@
   (defface unimacs/file-other
     `((t (:foreground ,bwc-taffy)))
     "Other kinds of entries in file views.")
+
+  (defface unimacs/buffer-file
+    `((t (:foreground ,bwc-snow)))
+    "Buffer with a file.")
+
+  (defface unimacs/buffer-other
+    `((t (:foreground ,bwc-dress)))
+    "Buffer without a file.")
   )
 
 
@@ -311,11 +323,15 @@
        ((eq 'update command)
         (setq *unimacs/src-buffers-data* nil)
         (dolist (bufname filt-buffers)
-          (setq *unimacs/src-buffers-data*
-                (cons (list bufname
-                            (with-current-buffer bufname mode-name)
-                            (buffer-file-name (get-buffer bufname)))
-                      *unimacs/src-buffers-data*)))))))))
+          (let ((face (if (buffer-file-name (get-buffer bufname))
+                          'unimacs/buffer-file 'unimacs/buffer-other))
+                (mode (with-current-buffer bufname mode-name))
+                (fn (or (buffer-file-name (get-buffer bufname)) "")))
+            (setq *unimacs/src-buffers-data*
+                  (cons (list (propertize bufname 'face face)
+                              (propertize mode 'face face)
+                              (propertize fn 'face face))
+                        *unimacs/src-buffers-data*))))))))))
 
 
 
@@ -336,7 +352,7 @@
     (mapatoms (lambda (smb)
                 (if (commandp smb)
                     (setq *unimacs/src-extended-data*
-                          (cons (list (symbol-name smb))
+                          (cons (list (propertize (symbol-name smb) 'face 'unimacs/normal))
                                 *unimacs/src-extended-data*))))))
 
    ((eq 'changed command)
